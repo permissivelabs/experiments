@@ -18,6 +18,7 @@
   "homepage": "https://github.com/permissivelabs/experiments#readme",
   "devDependencies": {
     "@account-abstraction/contracts": "^0.5.0",
+    "@openzeppelin/contracts": "^4.8.2",
     "hardhat": "^2.13.0"
   }
 }

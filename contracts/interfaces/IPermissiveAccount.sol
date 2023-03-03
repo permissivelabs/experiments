@@ -25,7 +25,7 @@ interface IPermissiveAccount is IAccount {
         bytes32 merkleRootPermissions
     ) external view returns (bool);
 
-    function validatePermission(
+    function isValidPermission(
         Permission memory permission
     ) external pure returns (bool);
 }

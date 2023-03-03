@@ -6,12 +6,12 @@ struct Permission {
     // the operator
     address operator;
     // the address allowed to interact with
-    address interactWith;
+    address to;
     // the function selector
     bytes4 selector;
     // the maximum value allowed to this permission
     uint256 maxValue;
-    // max fee allowed to be spent on the condition's permission
+    // max fee allowed to be spent on this permission
     uint256 maxFee;
     // set only if maxFee is 0
     address paymaster;
