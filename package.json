@@ -1,0 +1,23 @@
+{
+  "name": "@permissivelabs/experiments",
+  "version": "0.0.1",
+  "description": "The code to test the ideation and infrastructure mentionned in the whitepaper",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/permissivelabs/experiments.git"
+  },
+  "author": "Flydexo",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/permissivelabs/experiments/issues"
+  },
+  "homepage": "https://github.com/permissivelabs/experiments#readme",
+  "devDependencies": {
+    "@account-abstraction/contracts": "^0.5.0",
+    "hardhat": "^2.13.0"
+  }
+}
