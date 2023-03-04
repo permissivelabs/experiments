@@ -9,6 +9,8 @@ struct Permission {
     address to;
     // the function selector
     bytes4 selector;
+    // specific calldata that allowed
+    bytes allowed_calldata;
     // the maximum value allowed to this permission
     uint256 maxValue;
     // max fee allowed to be spent on this permission
