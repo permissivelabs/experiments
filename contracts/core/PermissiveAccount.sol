@@ -23,6 +23,11 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         bytes32 merkleRootPermissions
     ) external onlyOwner {
         operatorPermission[operator] = merkleRootPermissions;
+        if (merkleRootPermissions == bytes32(0)) {
+            emit OperatorRevoked(operator);
+        } else {
+            emit OperatorMutated(operator, merkleRootPermissions);
+        }
     }
 
     function isOperatorGrantedForPermissions(
