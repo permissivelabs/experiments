@@ -7,8 +7,11 @@ import "../interfaces/IPermissiveAccount.sol";
 import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
+    using ECDSA for bytes32;
+
     mapping(bytes32 => uint256) private _feeUsedForPermission;
     mapping(bytes32 => uint256) private _valueUsedForPermission;
     mapping(address => bytes32) public operatorPermission;
@@ -66,7 +69,10 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         UserOperation calldata userOp,
         bytes32 userOpHash
     ) internal override returns (uint256 validationData) {
-        return 2;
+        bytes32 hash = userOpHash.toEthSignedMessageHash();
+        if (owner() != hash.recover(userOp.signature))
+            return SIG_VALIDATION_FAILED;
+        return 0;
     }
 
     function _validateAndUpdateNonce(UserOperation calldata userOp)

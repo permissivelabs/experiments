@@ -18,14 +18,8 @@ interface IPermissiveAccount is IAccount {
         bytes32 merkleRootPermissions
     ) external;
 
-    function isGrantedOperator(address operator) external view returns (bool);
-
     function isOperatorGrantedForPermissions(
         address operator,
         bytes32 merkleRootPermissions
     ) external view returns (bool);
-
-    function isValidPermission(
-        Permission memory permission
-    ) external pure returns (bool);
 }
