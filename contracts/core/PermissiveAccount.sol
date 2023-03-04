@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     mapping(bytes32 => uint256) private _feeUsedForPermission;
     mapping(bytes32 => uint256) private _valueUsedForPermission;
-    mapping(address => bytes32) private _operatorPermission;
+    mapping(address => bytes32) public operatorPermission;
 
     uint96 private _nonce;
 
@@ -19,27 +19,15 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         address operator,
         bytes32 merkleRootPermissions
     ) external onlyOwner {
-        _operatorPermission[operator] = merkleRootPermissions;
-    }
-
-    function isGrantedOperator(address operator) external view returns (bool) {
-        return _operatorPermission[operator] != bytes32(0);
+        operatorPermission[operator] = merkleRootPermissions;
     }
 
     function isOperatorGrantedForPermissions(
         address operator,
         bytes32 merkleRootPermissions
     ) external view returns (bool) {
-        bytes32 storedRoot = _operatorPermission[operator];
+        bytes32 storedRoot = operatorPermission[operator];
         return storedRoot == merkleRootPermissions;
-    }
-
-    function isValidPermission(Permission memory permission)
-        external
-        pure
-        returns (bool)
-    {
-        return false;
     }
 
     function nonce() public view override returns (uint256) {
