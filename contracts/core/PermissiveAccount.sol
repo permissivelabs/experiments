@@ -73,7 +73,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     function _validateSignature(
         UserOperation calldata userOp,
         bytes32 userOpHash
-    ) internal override returns (uint256 validationData) {
+    ) internal virtual override returns (uint256 validationData) {
         bytes32 hash = userOpHash.toEthSignedMessageHash();
         if (owner() != hash.recover(userOp.signature))
             return SIG_VALIDATION_FAILED;
