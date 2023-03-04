@@ -7,7 +7,6 @@ import "../interfaces/IPermissiveAccount.sol";
 import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     mapping(bytes32 => uint256) private _feeUsedForPermission;
@@ -15,26 +14,16 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     mapping(address => bytes32) private _operatorPermission;
 
     uint96 private _nonce;
-    bytes32 public merkleRoot;
 
     function setOperatorPermissions(
         address operator,
-        bytes32 merkleRootPermissions,
-        bytes32[] calldata merkleRootProof
+        bytes32 merkleRootPermissions
     ) external onlyOwner {
-        require(
-            MerkleProof.verify(
-                merkleRootProof,
-                merkleRoot,
-                merkleRootPermissions
-            ),
-            "Incorrect Proof"
-        );
         _operatorPermission[operator] = merkleRootPermissions;
     }
 
     function isGrantedOperator(address operator) external view returns (bool) {
-        return false;
+        return _operatorPermission[operator] != bytes32(0);
     }
 
     function isOperatorGrantedForPermissions(
