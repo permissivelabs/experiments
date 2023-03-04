@@ -22,9 +22,18 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         address operator,
         bytes32 merkleRootPermissions
     ) external onlyOwner {
+        bytes32 oldValue = operatorPermission[operator];
+        bool isRevoked = (merkleRootPermissions == bytes32(0));
         operatorPermission[operator] = merkleRootPermissions;
-        if (merkleRootPermissions == bytes32(0)) {
+
+        if (oldValue == merkleRootPermissions) {
+            return; // Value unchanged, no event emitted
+        }
+
+        if (isRevoked) {
             emit OperatorRevoked(operator);
+        } else if (oldValue == bytes32(0)) {
+            emit OperatorGranted(operator, merkleRootPermissions);
         } else {
             emit OperatorMutated(operator, merkleRootPermissions);
         }
