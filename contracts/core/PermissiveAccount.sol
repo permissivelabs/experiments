@@ -7,8 +7,11 @@ import "../interfaces/IPermissiveAccount.sol";
 import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "../library/AllowedArguments.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
+    using AllowedArguments for bytes;
+
     mapping(bytes32 => uint256) feeUsedForPermission;
     mapping(bytes32 => uint256) valueUsedForPermission;
 
@@ -19,6 +22,15 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
 
     function isGrantedOperator(address operator) external view returns (bool) {
         return false;
+    }
+
+    function execute(
+        address dest,
+        uint256 value,
+        bytes calldata func,
+        Permission calldata permission
+    ) external {
+        permission.allowed_arguments.areArgumentsAllowed(func);
     }
 
     function isOperatorGrantedForPermissions(
