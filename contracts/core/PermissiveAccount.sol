@@ -7,21 +7,39 @@ import "../interfaces/IPermissiveAccount.sol";
 import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "../library/AllowedArguments.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     using AllowedArguments for bytes;
 
-    mapping(bytes32 => uint256) feeUsedForPermission;
-    mapping(bytes32 => uint256) valueUsedForPermission;
+    using ECDSA for bytes32;
+
+    mapping(bytes32 => uint256) private _feeUsedForPermission;
+    mapping(bytes32 => uint256) private _valueUsedForPermission;
+    mapping(address => bytes32) public operatorPermission;
+
+    uint96 private _nonce;
 
     function setOperatorPermissions(
         address operator,
         bytes32 merkleRootPermissions
-    ) external onlyOwner {}
+    ) external onlyOwner {
+        bytes32 oldValue = operatorPermission[operator];
+        bool isRevoked = (merkleRootPermissions == bytes32(0));
+        operatorPermission[operator] = merkleRootPermissions;
 
-    function isGrantedOperator(address operator) external view returns (bool) {
-        return false;
+        if (oldValue == merkleRootPermissions) {
+            return; // Value unchanged, no event emitted
+        }
+
+        if (isRevoked) {
+            emit OperatorRevoked(operator);
+        } else if (oldValue == bytes32(0)) {
+            emit OperatorGranted(operator, merkleRootPermissions);
+        } else {
+            emit OperatorMutated(operator, merkleRootPermissions);
+        }
     }
 
     function execute(
@@ -37,17 +55,12 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         address operator,
         bytes32 merkleRootPermissions
     ) external view returns (bool) {
-        return false;
-    }
-
-    function isValidPermission(
-        Permission memory permission
-    ) external pure returns (bool) {
-        return false;
+        bytes32 storedRoot = operatorPermission[operator];
+        return storedRoot == merkleRootPermissions;
     }
 
     function nonce() public view override returns (uint256) {
-        return 0;
+        return _nonce;
     }
 
     function entryPoint() public view override returns (IEntryPoint) {
@@ -81,13 +94,19 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     function _validateSignature(
         UserOperation calldata userOp,
         bytes32 userOpHash
-    ) internal override returns (uint256 validationData) {
-        return 2;
+    ) internal virtual override returns (uint256 validationData) {
+        bytes32 hash = userOpHash.toEthSignedMessageHash();
+        if (owner() != hash.recover(userOp.signature))
+            return SIG_VALIDATION_FAILED;
+        return 0;
     }
 
-    function _validateAndUpdateNonce(
-        UserOperation calldata userOp
-    ) internal override {}
+    function _validateAndUpdateNonce(UserOperation calldata userOp)
+        internal
+        override
+    {
+        require(_nonce++ == userOp.nonce, "account: invalid nonce");
+    }
 
     function _payPrefund(uint256 missingAccountFunds) internal override {
         if (missingAccountFunds != 0) {
