@@ -8,8 +8,11 @@ import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "../library/AllowedArguments.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
+    using AllowedArguments for bytes;
+
     using ECDSA for bytes32;
 
     mapping(bytes32 => uint256) private _feeUsedForPermission;
@@ -37,6 +40,15 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         } else {
             emit OperatorMutated(operator, merkleRootPermissions);
         }
+    }
+
+    function execute(
+        address dest,
+        uint256 value,
+        bytes calldata func,
+        Permission calldata permission
+    ) external {
+        permission.allowed_arguments.areArgumentsAllowed(func);
     }
 
     function isOperatorGrantedForPermissions(
