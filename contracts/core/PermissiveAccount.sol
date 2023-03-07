@@ -8,63 +8,51 @@ import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "../library/AllowedArguments.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
-    using AllowedArguments for bytes;
-
     using ECDSA for bytes32;
 
     mapping(bytes32 => uint256) private _feeUsedForPermission;
     mapping(bytes32 => uint256) private _valueUsedForPermission;
-    mapping(address => bytes32) public operatorPermission;
+    mapping(address => bytes32) public operatorPermissions;
+    IEntryPoint private immutable _entryPoint;
 
     uint96 private _nonce;
+
+    constructor(address __entryPoint) {
+        _entryPoint = IEntryPoint(__entryPoint);
+    }
 
     function setOperatorPermissions(
         address operator,
         bytes32 merkleRootPermissions
     ) external onlyOwner {
-        bytes32 oldValue = operatorPermission[operator];
-        bool isRevoked = (merkleRootPermissions == bytes32(0));
-        operatorPermission[operator] = merkleRootPermissions;
-
+        bytes32 oldValue = operatorPermissions[operator];
         if (oldValue == merkleRootPermissions) {
-            return; // Value unchanged, no event emitted
+            revert SamePermissions();
         }
-
-        if (isRevoked) {
-            emit OperatorRevoked(operator);
-        } else if (oldValue == bytes32(0)) {
-            emit OperatorGranted(operator, merkleRootPermissions);
-        } else {
-            emit OperatorMutated(operator, merkleRootPermissions);
-        }
+        operatorPermissions[operator] = merkleRootPermissions;
+        emit OperatorMutated(operator, oldValue, merkleRootPermissions);
     }
 
     function execute(
         address dest,
         uint256 value,
         bytes calldata func,
-        Permission calldata permission
+        Permission calldata permission,
+        bytes32[] calldata proof
     ) external {
-        permission.allowed_arguments.areArgumentsAllowed(func);
-    }
-
-    function isOperatorGrantedForPermissions(
-        address operator,
-        bytes32 merkleRootPermissions
-    ) external view returns (bool) {
-        bytes32 storedRoot = operatorPermission[operator];
-        return storedRoot == merkleRootPermissions;
+        (bool success, ) = dest.call{value: value}(func);
+        (success);
     }
 
     function nonce() public view override returns (uint256) {
         return _nonce;
     }
 
-    function entryPoint() public view override returns (IEntryPoint) {
-        return IEntryPoint(address(0));
+    function entryPoint() public view override returns(IEntryPoint) {
+        return _entryPoint;
     }
 
     function validateUserOp(
@@ -81,7 +69,28 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         if (userOp.initCode.length == 0) {
             _validateAndUpdateNonce(userOp);
         }
+        (Permission memory perm, bytes32[] memory proof) = abi.decode(userOp.callData[4:], (Permission, bytes32[]));
+        // hash operation
+        bytes32 permHash = keccak256(
+            abi.encode(
+                perm.operator,
+                perm.to,
+                perm.selector,
+                perm.maxValue,
+                perm.maxFee,
+                perm.paymaster,
+                perm.expires_at_unix,
+                perm.expires_at_block
+            )
+        );
+        bool isAllowed = MerkleProof.verify(proof, operatorPermissions[perm.operator], permHash);
+        if(!isAllowed) revert NotAllowed(perm.operator);
+        _validatePermission(perm);
         _payPrefund(missingAccountFunds);
+    }
+
+    function _validatePermission(Permision memory permission) pure {
+        require(perm)
     }
 
     function _requireFromEntryPoint() internal view override {
@@ -105,7 +114,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         internal
         override
     {
-        require(_nonce++ == userOp.nonce, "account: invalid nonce");
+        require(++_nonce == userOp.nonce, "account: invalid nonce");
     }
 
     function _payPrefund(uint256 missingAccountFunds) internal override {
@@ -115,7 +124,6 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
                 gas: type(uint256).max
             }("");
             (success);
-            //ignore failure (its EntryPoint's job to verify, not account.)
         }
     }
 }

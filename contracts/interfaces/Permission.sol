@@ -10,7 +10,7 @@ struct Permission {
     // the function selector
     bytes4 selector;
     // specific arguments that are allowed for this permisison (see readme)
-    bytes allowed_arguments;
+    // bytes allowed_arguments;
     // the maximum value allowed to this permission
     uint256 maxValue;
     // max fee allowed to be spent on this permission
