@@ -1,4 +1,7 @@
-module.exports = {
+import { HardhatUserConfig } from "hardhat/config";
+import "@nomicfoundation/hardhat-toolbox"
+
+const config: HardhatUserConfig = {
     defaultNetwork: "hardhat",
     networks: {
       hardhat: {
@@ -23,3 +26,5 @@ module.exports = {
       timeout: 40000
     }
   }
+
+export default config

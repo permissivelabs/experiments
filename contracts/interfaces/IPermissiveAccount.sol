@@ -9,6 +9,11 @@ interface IPermissiveAccount is IAccount {
 
     error SamePermissions();
     error NotAllowed(address);
+    error InvalidTo(address provided, address expected);
+    error ExceededValue(uint256 value, uint256 max);
+    error InvalidPermission();
+    error InvalidPaymaster(address provided, address expected);
+    error InvalidSelector(bytes4 provided, bytes4 expected);
 
     event OperatorMutated(address operator, bytes32 oldPermissions, bytes32 newPermissions);
 
