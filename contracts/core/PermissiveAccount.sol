@@ -44,6 +44,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         Permission calldata permission,
         bytes32[] calldata proof
     ) external {
+        _requireFromEntryPointOrOwner();
         (bool success, ) = dest.call{value: value}(func);
         (success);
     }
@@ -69,35 +70,37 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         if (userOp.initCode.length == 0) {
             _validateAndUpdateNonce(userOp);
         }
-        (Permission memory perm, bytes32[] memory proof) = abi.decode(userOp.callData[4:], (Permission, bytes32[]));
-        validationData = _validateSignature(userOp, userOpHash);
-        // hash operation
-        bytes32 permHash = keccak256(
-            abi.encode(
-                perm.operator,
-                perm.to,
-                perm.selector,
-                perm.maxValue,
-                perm.maxFee,
-                perm.paymaster,
-                perm.expires_at_unix,
-                perm.expires_at_block
-            )
-        );
-        bool isAllowed = MerkleProof.verify(proof, operatorPermissions[perm.operator], permHash);
-        if(!isAllowed) revert NotAllowed(perm.operator);
-        _validatePermission(userOp, perm);
+        bytes32 hash = userOpHash.toEthSignedMessageHash();
+        if(owner() != hash.recover(userOp.signature)) {
+            (,,,Permission memory perm, bytes32[] memory proof) = abi.decode(userOp.callData[4:], (address, uint256, bytes, Permission, bytes32[]));
+            if (perm.operator != hash.recover(userOp.signature))
+                validationData = SIG_VALIDATION_FAILED;
+            bytes32 permHash = keccak256(
+                abi.encode(
+                    perm.operator,
+                    perm.to,
+                    perm.selector,
+                    perm.maxValue,
+                    perm.maxFee,
+                    perm.paymaster,
+                    perm.expires_at_unix,
+                    perm.expires_at_block
+                )
+            );
+            bool isValidProof = MerkleProof.verify(proof, operatorPermissions[perm.operator], permHash);
+            if(!isValidProof) revert InvalidProof();
+            _validatePermission(userOp, perm);
+        }
         _payPrefund(missingAccountFunds);
     }
 
-    function _validatePermission(UserOperation memory userOp, Permission memory permission) public {
-        (address to, uint256 value, bytes memory callData,,) = abi.decode(userOp.callData, (address, uint256, bytes, Permission, bytes32));
+    function _validatePermission(UserOperation calldata userOp, Permission memory permission) view public {
+        (address to, uint256 value, bytes memory callData,,) = abi.decode(bytes(userOp.callData[4:]), (address, uint256, bytes, Permission, bytes32[]));
         if(permission.to != to) revert InvalidTo(to, permission.to);
         if(permission.maxValue < value) revert ExceededValue(value, permission.maxValue);
-        // check gas on execute
-        if(permission.paymaster != address(0) && permission.maxFee > 0)revert InvalidPermission();
         if(permission.selector != bytes4(callData)) revert InvalidSelector(bytes4(callData), permission.selector);
         address paymaster = address(0);
+        console.log(0);
         assembly {
             let initCodeSize := mload(add(userOp, 64))
             let callDataSize := mload(add(add(userOp, 96), initCodeSize))
@@ -106,25 +109,20 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
             paymaster := and(mask, paymaster)
         }
         if(permission.maxFee == 0 && permission.paymaster != paymaster) revert InvalidPaymaster(permission.paymaster, paymaster);
-        // check timestamps on execute
     }
 
-    // function _updateValue(uint256 value)
-
-    function _requireFromEntryPoint() internal view override {
+    function _requireFromEntryPointOrOwner() internal view {
         require(
-            msg.sender == address(entryPoint()),
-            "account: not from EntryPoint"
+            msg.sender == address(entryPoint()) || msg.sender == owner(),
+            "account: not from EntryPoint or owner"
         );
     }
 
     function _validateSignature(
         UserOperation calldata userOp,
         bytes32 userOpHash
-        // address operator
-    ) internal override returns (uint256 validationData) {
+    ) internal override view returns (uint256 validationData) {
         bytes32 hash = userOpHash.toEthSignedMessageHash();
-        //  && operator != hash.recover(userOp.signature)
         if (owner() != hash.recover(userOp.signature))
             return SIG_VALIDATION_FAILED;
         return 0;

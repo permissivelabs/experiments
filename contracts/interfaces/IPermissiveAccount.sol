@@ -8,6 +8,7 @@ import "./Permission.sol";
 interface IPermissiveAccount is IAccount {
 
     error SamePermissions();
+    error InvalidProof();
     error NotAllowed(address);
     error InvalidTo(address provided, address expected);
     error ExceededValue(uint256 value, uint256 max);

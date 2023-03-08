@@ -1,33 +1,96 @@
-import { expect } from "chai";
-import hre from "hardhat";
+import { expect } from 'chai';
+import hre, { ethers } from 'hardhat';
+import { generateCorrectPermissionAndOperation } from './utils/fixtures';
 
 describe('_validatePermission', () => {
-    it('should refuse for to', async () => {
-        const Permissive = await hre.ethers.getContractFactory("PermissiveAccount");
-        const account = await Permissive.deploy('0x0576a174D229E3cFA37253523E645A78A0C91B57');
-        const permission = {
-            operator: '0x429952c8d27F515011d623dFC9038152af52C5a8',
-            to: '0x0576a174D229E3cFA37253523E645A78A0C91B57',
-            selector: '0x00000000',
-            maxValue: 0,
-            maxFee: 0,
-            paymaster: '0x429952c8d27F515011d623dFC9038152af52C5a8',
-            expires_at_unix: 0,
-            expires_at_block: 0
-        };
-        const operation = {
-            sender: '0x429952c8d27F515011d623dFC9038152af52C5a8',
-            nonce: 0,
-            initCode: [],
-            callData: [],
-            callGasLimit: 0,
-            verificationGasLimit: 0,
-            preVerificationGas: 0,
-            maxFeePerGas: 0,
-            maxPriorityFeePerGas: 0,
-            paymasterAndData: [],
-            signature: []
-        };
-        console.log(await account._validatePermission(operation, permission));
-    })
-})
+	it('should refuse for InvalidTo', async () => {
+		const Permissive = await hre.ethers.getContractFactory('PermissiveAccount');
+		const account = await Permissive.deploy(
+			'0x0576a174D229E3cFA37253523E645A78A0C91B57'
+		);
+		const { permission, operation } =
+			generateCorrectPermissionAndOperation(account);
+		permission.to = ethers.Wallet.createRandom().address;
+		await expect(account._validatePermission(operation, permission))
+			.to.be.revertedWithCustomError(account, 'InvalidTo')
+			.withArgs('0x0576a174D229E3cFA37253523E645A78A0C91B57', permission.to);
+	});
+	it('should refuse for ExceededValue', async () => {
+		const Permissive = await hre.ethers.getContractFactory('PermissiveAccount');
+		const account = await Permissive.deploy(
+			'0x0576a174D229E3cFA37253523E645A78A0C91B57'
+		);
+		const { permission, operation } =
+			generateCorrectPermissionAndOperation(account);
+		permission.maxValue = 2;
+		await expect(account._validatePermission(operation, permission))
+			.to.be.revertedWithCustomError(account, 'ExceededValue')
+			.withArgs(5, permission.maxValue);
+	});
+	it('should refuse for InvalidSelector', async () => {
+		const Permissive = await hre.ethers.getContractFactory('PermissiveAccount');
+		const account = await Permissive.deploy(
+			'0x0576a174D229E3cFA37253523E645A78A0C91B57'
+		);
+		const { permission, operation } =
+			generateCorrectPermissionAndOperation(account);
+		operation.callData = account.interface.encodeFunctionData('execute', [
+			'0x0576a174D229E3cFA37253523E645A78A0C91B57',
+			5,
+			'0x12345678' +
+				ethers.utils.defaultAbiCoder
+					.encode(
+						['uint256', 'address'],
+						[100, '0x0576a174D229E3cFA37253523E645A78A0C91B57']
+					)
+					.slice(2),
+			permission,
+			[],
+		]);
+		await expect(
+			account._validatePermission(operation, permission)
+		).to.be.revertedWithCustomError(account, 'InvalidSelector');
+	});
+	it('should refuse for InvalidSelector', async () => {
+		const Permissive = await hre.ethers.getContractFactory('PermissiveAccount');
+		const account = await Permissive.deploy(
+			'0x0576a174D229E3cFA37253523E645A78A0C91B57'
+		);
+		const { permission, operation } =
+			generateCorrectPermissionAndOperation(account);
+		operation.callData = account.interface.encodeFunctionData('execute', [
+			'0x0576a174D229E3cFA37253523E645A78A0C91B57',
+			5,
+			'0x12345678' +
+				ethers.utils.defaultAbiCoder
+					.encode(
+						['uint256', 'address'],
+						[100, '0x0576a174D229E3cFA37253523E645A78A0C91B57']
+					)
+					.slice(2),
+			permission,
+			[],
+		]);
+		await expect(
+			account._validatePermission(operation, permission)
+		).to.be.revertedWithCustomError(account, 'InvalidSelector');
+	});
+	it('should refuse for InvalidPaymaster', async () => {
+		const Permissive = await hre.ethers.getContractFactory('PermissiveAccount');
+		const account = await Permissive.deploy(
+			'0x0576a174D229E3cFA37253523E645A78A0C91B57'
+		);
+		const { permission, operation } =
+			generateCorrectPermissionAndOperation(account);
+		operation.paymasterAndData = Array.from(
+			ethers.utils.arrayify(ethers.Wallet.createRandom().address)
+		);
+		permission.maxFee = 0;
+		await expect(account._validatePermission(operation, permission))
+			.to.be.revertedWithCustomError(account, 'InvalidPaymaster')
+			.withArgs(
+				permission.paymaster,
+				ethers.utils.hexlify(operation.paymasterAndData)
+			);
+	});
+});
