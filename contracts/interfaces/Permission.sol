@@ -19,8 +19,8 @@ struct Permission {
     address paymaster;
     // the timestamp when the permission isn't valid anymore
     // @dev can be 0 if expires_at_block != 0
-    uint256 expires_at_unix;
+    uint256 expiresAtUnix;
     // the block when the permission isn't valid anymore
     // @dev can be 0 if expires_at_unix != 0
-    uint256 expires_at_block;
+    uint256 expiresAtBlock;
 }
