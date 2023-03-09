@@ -9,7 +9,6 @@ import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import "hardhat/console.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     using ECDSA for bytes32;
@@ -100,13 +99,9 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         if(permission.maxValue < value) revert ExceededValue(value, permission.maxValue);
         if(permission.selector != bytes4(callData)) revert InvalidSelector(bytes4(callData), permission.selector);
         address paymaster = address(0);
-        console.log(0);
         assembly {
-            let initCodeSize := mload(add(userOp, 64))
-            let callDataSize := mload(add(add(userOp, 96), initCodeSize))
-            paymaster := mload(add(add(add(userOp, 256), initCodeSize), callDataSize))
-            let mask := shl(12, sub(exp(2, 160), 1))
-            paymaster := and(mask, paymaster)
+            let paymasterOffset := calldataload(add(userOp, 288))
+            paymaster := calldataload(add(paymasterOffset, add(userOp, 32)))
         }
         if(permission.maxFee == 0 && permission.paymaster != paymaster) revert InvalidPaymaster(permission.paymaster, paymaster);
     }

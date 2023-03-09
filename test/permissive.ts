@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { defaultAbiCoder } from 'ethers/lib/utils';
 import hre, { ethers } from 'hardhat';
 import { generateCorrectPermissionAndOperation } from './utils/fixtures';
 
@@ -82,15 +83,13 @@ describe('_validatePermission', () => {
 		);
 		const { permission, operation } =
 			generateCorrectPermissionAndOperation(account);
-		operation.paymasterAndData = Array.from(
-			ethers.utils.arrayify(ethers.Wallet.createRandom().address)
-		);
+		operation.paymasterAndData = defaultAbiCoder.encode(['address'], ['0x95222290DD7278Aa3Ddd389Cc1E1d165CC4BAfe5'])
 		permission.maxFee = 0;
 		await expect(account._validatePermission(operation, permission))
 			.to.be.revertedWithCustomError(account, 'InvalidPaymaster')
 			.withArgs(
 				permission.paymaster,
-				ethers.utils.hexlify(operation.paymasterAndData)
+				'0x95222290DD7278Aa3Ddd389Cc1E1d165CC4BAfe5'
 			);
 	});
 });

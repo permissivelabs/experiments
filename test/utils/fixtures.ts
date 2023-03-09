@@ -14,7 +14,7 @@ export const generateCorrectPermissionAndOperation = (account: Contract) => {
 		expires_at_block: 0,
 	};
 	const operation = {
-		sender: '0x429952c8d27F515011d623dFC9038152af52C5a8',
+		sender: '0x0576a174D229E3cFA37253523E645A78A0C91B57',
 		nonce: 0,
 		initCode: [],
 		callData: account.interface.encodeFunctionData('execute', [
@@ -30,13 +30,13 @@ export const generateCorrectPermissionAndOperation = (account: Contract) => {
 			permission,
 			[],
 		]),
-		callGasLimit: 0,
-		verificationGasLimit: 0,
-		preVerificationGas: 0,
-		maxFeePerGas: 0,
-		maxPriorityFeePerGas: 0,
-		paymasterAndData: [],
-		signature: [],
+		callGasLimit: 667,
+		verificationGasLimit: 668,
+		preVerificationGas: 669,
+		maxFeePerGas: 700,
+		maxPriorityFeePerGas: 701,
+		paymasterAndData: '0x00',
+		signature: '0x00',
 	};
 
 	return {
