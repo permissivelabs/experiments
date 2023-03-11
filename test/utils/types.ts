@@ -5,8 +5,6 @@ export const ZPermission = z.object({
 	operator: z.string().length(42).startsWith('0x'),
 	to: z.string().length(42).startsWith('0x'),
 	selector: z.string().length(10).startsWith('0x'),
-	maxValue: z.instanceof(ethers.BigNumber).or(z.number()),
-	maxFee: z.instanceof(ethers.BigNumber).or(z.number()),
 	paymaster: z.string().length(42).startsWith('0x'),
 	expiresAtUnix: z.instanceof(ethers.BigNumber).or(z.number()),
 	expiresAtBlock: z.instanceof(ethers.BigNumber).or(z.number()),

@@ -11,11 +11,6 @@ struct Permission {
     bytes4 selector;
     // specific arguments that are allowed for this permisison (see readme)
     // bytes allowed_arguments;
-    // the maximum value allowed to this permission
-    uint256 maxValue;
-    // max fee allowed to be spent on this permission
-    uint256 maxFee;
-    // set only if maxFee is 0
     address paymaster;
     // the timestamp when the permission isn't valid anymore
     // @dev can be 0 if expires_at_block != 0

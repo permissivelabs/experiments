@@ -3,14 +3,16 @@ import { randomBytes } from 'ethers/lib/utils';
 import { Wallet } from 'ethers/lib/index';
 import hre, { ethers } from 'hardhat';
 import { ENTRYPOINT } from './utils/constants';
-import { BaseAccountAPI } from '@account-abstraction/sdk/dist/src/BaseAccountAPI';
 import {
 	generateCorrectOperation,
 	hashPermission,
 	permissionsSample,
 	setupAccount,
+	computerPermissionMerkleTree,
 } from './utils/fixtures';
-import { SimpleAccountAPI } from '@account-abstraction/sdk';
+import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
+import { CustomEntryPoint, PermissiveAccount } from '../typechain-types';
+import { UserOperationStruct } from '@account-abstraction/contracts';
 
 describe('setOperatorPermissions', () => {
 	it('should update permission hash, update fee and value and emit event', async () => {
@@ -40,22 +42,32 @@ describe('Entrpoint', () => {
 });
 
 describe('validateUserOp', () => {
-	it('should validate', async () => {
-		const signers = await ethers.getSigners();
-		const owner = signers[0];
-		const operator = signers[1];
+	let owner, operator: SignerWithAddress;
+	let entrypoint: CustomEntryPoint;
+	let account: PermissiveAccount;
+	let operation: UserOperationStruct;
+
+	before(async () => {
 		const Entrypoint = await hre.ethers.getContractFactory('CustomEntryPoint');
-		const entrypoint = await Entrypoint.deploy();
-		const account = await setupAccount(
-			entrypoint.address,
-			operator.address,
-			owner
-		);
-		const operation = generateCorrectOperation(account, operator.address);
+		entrypoint = await Entrypoint.deploy();
+	});
+
+	beforeEach(async () => {
+		const signers = await ethers.getSigners();
+		owner = signers[0];
+		operator = signers[1];
+		account = await setupAccount(entrypoint.address, operator.address, owner);
+		operation = generateCorrectOperation(account, operator.address);
 		operation.sender = account.address;
 		const opHash = await entrypoint.getUserOpHash(operation);
-		operation.signature = operator.signMessage(ethers.utils.arrayify(opHash));
-		await entrypoint.handleOps([operation], account.address);
-		expect(await account._remainingFeeForOperator(operator.address));
+		operation.signature = await operator.signMessage(
+			ethers.utils.arrayify(opHash)
+		);
 	});
+
+	it('should validate', async () => {
+		await entrypoint.handleOps([operation], account.address);
+	});
+
+	it('should refuse because invalid operator', async () => {});
 });

@@ -13,8 +13,6 @@ export const permissionsSample = (operator: string): Permission[] => {
 			operator,
 			to: '0x0576a174D229E3cFA37253523E645A78A0C91B57',
 			selector: '0xa9059cbb', // erc20 transfer
-			maxValue: 5,
-			maxFee: 5,
 			paymaster: '0x0000000000000000000000000000000000000000',
 			expiresAtUnix: 1709933133,
 			expiresAtBlock: 0,
@@ -23,8 +21,6 @@ export const permissionsSample = (operator: string): Permission[] => {
 			operator,
 			to: '0x0576a174D229E3cFA37253523E645A78A0C91B57',
 			selector: '0xab790ba3', // erc721 transfer
-			maxValue: 5,
-			maxFee: 5,
 			paymaster: '0x0000000000000000000000000000000000000000',
 			expiresAtUnix: 1709933133,
 			expiresAtBlock: 0,
@@ -33,8 +29,6 @@ export const permissionsSample = (operator: string): Permission[] => {
 			operator,
 			to: '0x0576a174D229E3cFA37253523E645A78A0C91B57',
 			selector: '0x022c0d9f', // swap uniswap
-			maxValue: 5,
-			maxFee: 5,
 			paymaster: '0x0000000000000000000000000000000000000000',
 			expiresAtUnix: 1709933133,
 			expiresAtBlock: 0,
@@ -45,16 +39,7 @@ export const permissionsSample = (operator: string): Permission[] => {
 export const hashPermission = (permission: Permission): string => {
 	return keccak256(
 		defaultAbiCoder.encode(
-			[
-				'address',
-				'address',
-				'bytes4',
-				'uint256',
-				'uint256',
-				'address',
-				'uint256',
-				'uint256',
-			],
+			['address', 'address', 'bytes4', 'address', 'uint256', 'uint256'],
 			Object.values(permission)
 		)
 	);
@@ -116,9 +101,13 @@ export const setupAccount = async (
 	const account = await Permissive.deploy(ENTRYPOINT);
 	const merkleRoot =
 		'0x' + computerPermissionMerkleTree(permissionsSample(operator)).root;
-	await account.setOperatorPermissions(operator, merkleRoot, 5, 8);
-	const signer = owner;
-	await signer.sendTransaction({
+	await account.setOperatorPermissions(
+		operator,
+		merkleRoot,
+		ethers.utils.parseEther('0.5'),
+		ethers.utils.parseEther('0.5')
+	);
+	await owner.sendTransaction({
 		value: ethers.utils.parseEther('1'),
 		to: account.address,
 	});
