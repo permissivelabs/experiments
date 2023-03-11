@@ -9,11 +9,12 @@ import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "hardhat/console.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     using ECDSA for bytes32;
-    mapping(bytes32 => uint256) private _remainingFeeForPermission;
-    mapping(bytes32 => uint256) private _remainingValueForPermission;
+    mapping(address => uint256) public _remainingFeeForOperator;
+    mapping(address => uint256) public _remainingValueForOperator;
     mapping(address => bytes32) public operatorPermissions;
     IEntryPoint private immutable _entryPoint;
     uint96 private _nonce;
@@ -43,8 +44,8 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         _requireFromEntryPointOrOwner();
         bytes32 oldValue = operatorPermissions[operator];
         operatorPermissions[operator] = merkleRootPermissions;
-        _remainingFeeForPermission[merkleRootPermissions] = maxFee;
-        _remainingValueForPermission[merkleRootPermissions] = maxValue;
+        _remainingFeeForOperator[operator] = maxFee;
+        _remainingValueForOperator[operator] = maxValue;
         emit OperatorMutated(operator, oldValue, merkleRootPermissions);
     }
 
@@ -68,12 +69,10 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
                     userOp.callData[4:],
                     (address, uint256, bytes, Permission, bytes32[])
                 );
-
             if (permission.operator != hash.recover(userOp.signature))
                 validationData = SIG_VALIDATION_FAILED;
-
-            bytes32 permHash = _validateMerklePermission(permission, proof);
-            _validatePermission(userOp, permission, permHash);
+            _validateMerklePermission(permission, proof);
+            _validatePermission(userOp, permission);
         }
         _payPrefund(missingAccountFunds);
     }
@@ -83,22 +82,20 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         uint256 value,
         bytes calldata func,
         Permission calldata permission,
-        bytes32 permissionHash
+        // stores the proof, only used in validateUserOp
+        bytes32[] calldata
     ) external {
         _requireFromEntryPointOrOwner();
         if (msg.sender != owner()) {
             uint fee = tx.gasprice * gasleft();
-            if (fee > _remainingFeeForPermission[permissionHash])
+            if (fee > _remainingFeeForOperator[permission.operator]) {
                 revert ExceededFees(
                     fee,
-                    _remainingFeeForPermission[permissionHash]
+                    _remainingFeeForOperator[permission.operator]
                 );
-            _remainingValueForPermission[permissionHash] =
-                _remainingValueForPermission[permissionHash] -
-                value;
-            _remainingFeeForPermission[permissionHash] =
-                _remainingFeeForPermission[permissionHash] -
-                fee;
+            }
+            _remainingValueForOperator[permission.operator] -= value;
+            _remainingFeeForOperator[permission.operator] -= fee;
             if (permission.expiresAtUnix != 0) {
                 if (block.timestamp >= permission.expiresAtUnix)
                     revert ExpiredPermission(
@@ -113,7 +110,9 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
                     );
             }
         }
+        console.log("before call");
         (bool success, ) = dest.call{value: value}(func);
+        console.log(success);
         (success);
     }
 
@@ -121,16 +120,18 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
 
     function _validatePermission(
         UserOperation calldata userOp,
-        Permission memory permission,
-        bytes32 permissionHash
-    ) public view {
+        Permission memory permission
+    ) internal view {
         (address to, uint256 value, bytes memory callData, , ) = abi.decode(
-            bytes(userOp.callData[4:]),
-            (address, uint256, bytes, Permission, bytes32)
+            userOp.callData[4:],
+            (address, uint256, bytes, Permission, bytes32[])
         );
         if (permission.to != to) revert InvalidTo(to, permission.to);
-        // if (_remainingFeeForPermission[permissionHash] < value)
-        //     revert ExceededValue(value, permission.maxValue);
+        if (_remainingValueForOperator[permission.operator] < value)
+            revert ExceededValue(
+                value,
+                _remainingValueForOperator[permission.operator]
+            );
         if (permission.selector != bytes4(callData))
             revert InvalidSelector(bytes4(callData), permission.selector);
         if (permission.expiresAtUnix != 0 && permission.expiresAtBlock != 0)
@@ -138,23 +139,21 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         address paymaster = address(0);
         assembly {
             let paymasterOffset := calldataload(add(userOp, 288))
-            paymaster := calldataload(add(paymasterOffset, add(userOp, 32)))
+            paymaster := calldataload(add(paymasterOffset, add(userOp, 20)))
         }
-        if (permission.maxFee == 0 && permission.paymaster != paymaster)
-            revert InvalidPaymaster(permission.paymaster, paymaster);
+        if (paymaster != permission.paymaster)
+            revert InvalidPaymaster(paymaster, permission.paymaster);
     }
 
     function _validateMerklePermission(
         Permission memory permission,
         bytes32[] memory proof
-    ) internal view returns (bytes32 permHash) {
-        permHash = keccak256(
+    ) public view {
+        bytes32 permHash = keccak256(
             abi.encode(
                 permission.operator,
                 permission.to,
                 permission.selector,
-                permission.maxValue,
-                permission.maxFee,
                 permission.paymaster,
                 permission.expiresAtUnix,
                 permission.expiresAtBlock
@@ -200,4 +199,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
             (success);
         }
     }
+
+    // solhint-disable-next-line no-empty-blocks
+    receive() external payable {}
 }
