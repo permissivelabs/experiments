@@ -1,0 +1,15 @@
+name: test
+on:
+  push
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the commit
+        uses: actions/checkout@v2
+      - name: Nodejs
+        uses: actions/setup-node@v3
+      - name: Install
+        run: npm install
+      - name: Testing contracts
+        run: npx hardhat test

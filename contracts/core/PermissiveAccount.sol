@@ -9,51 +9,43 @@ import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import "hardhat/console.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     using ECDSA for bytes32;
-
-    // mapping(bytes32 => uint256) private _feeUsedForPermission;
-    // mapping(bytes32 => uint256) private _valueUsedForPermission;
+    mapping(bytes32 => uint256) private _remainingFeeForPermission;
+    mapping(bytes32 => uint256) private _remainingValueForPermission;
     mapping(address => bytes32) public operatorPermissions;
     IEntryPoint private immutable _entryPoint;
-
     uint96 private _nonce;
 
     constructor(address __entryPoint) {
         _entryPoint = IEntryPoint(__entryPoint);
     }
 
-    function setOperatorPermissions(
-        address operator,
-        bytes32 merkleRootPermissions
-    ) external onlyOwner {
-        bytes32 oldValue = operatorPermissions[operator];
-        if (oldValue == merkleRootPermissions) {
-            revert SamePermissions();
-        }
-        operatorPermissions[operator] = merkleRootPermissions;
-        emit OperatorMutated(operator, oldValue, merkleRootPermissions);
-    }
-
-    function execute(
-        address dest,
-        uint256 value,
-        bytes calldata func,
-        Permission calldata permission,
-        bytes32[] calldata proof
-    ) external {
-        (bool success, ) = dest.call{value: value}(func);
-        (success);
-    }
+    /* GETTERS */
 
     function nonce() public view override returns (uint256) {
         return _nonce;
     }
 
-    function entryPoint() public view override returns(IEntryPoint) {
+    function entryPoint() public view override returns (IEntryPoint) {
         return _entryPoint;
+    }
+
+    /* EXTERNAL FUNCTIONS */
+
+    function setOperatorPermissions(
+        address operator,
+        bytes32 merkleRootPermissions,
+        uint256 maxValue,
+        uint256 maxFee
+    ) external {
+        _requireFromEntryPointOrOwner();
+        bytes32 oldValue = operatorPermissions[operator];
+        operatorPermissions[operator] = merkleRootPermissions;
+        _remainingFeeForPermission[merkleRootPermissions] = maxFee;
+        _remainingValueForPermission[merkleRootPermissions] = maxValue;
+        emit OperatorMutated(operator, oldValue, merkleRootPermissions);
     }
 
     function validateUserOp(
@@ -69,71 +61,133 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         if (userOp.initCode.length == 0) {
             _validateAndUpdateNonce(userOp);
         }
-        (Permission memory perm, bytes32[] memory proof) = abi.decode(userOp.callData[4:], (Permission, bytes32[]));
-        validationData = _validateSignature(userOp, userOpHash);
-        // hash operation
-        bytes32 permHash = keccak256(
-            abi.encode(
-                perm.operator,
-                perm.to,
-                perm.selector,
-                perm.maxValue,
-                perm.maxFee,
-                perm.paymaster,
-                perm.expires_at_unix,
-                perm.expires_at_block
-            )
-        );
-        bool isAllowed = MerkleProof.verify(proof, operatorPermissions[perm.operator], permHash);
-        if(!isAllowed) revert NotAllowed(perm.operator);
-        _validatePermission(userOp, perm);
+        bytes32 hash = userOpHash.toEthSignedMessageHash();
+        if (owner() != hash.recover(userOp.signature)) {
+            (, , , Permission memory permission, bytes32[] memory proof) = abi
+                .decode(
+                    userOp.callData[4:],
+                    (address, uint256, bytes, Permission, bytes32[])
+                );
+
+            if (permission.operator != hash.recover(userOp.signature))
+                validationData = SIG_VALIDATION_FAILED;
+
+            bytes32 permHash = _validateMerklePermission(permission, proof);
+            _validatePermission(userOp, permission, permHash);
+        }
         _payPrefund(missingAccountFunds);
     }
 
-    function _validatePermission(UserOperation memory userOp, Permission memory permission) public {
-        (address to, uint256 value, bytes memory callData,,) = abi.decode(userOp.callData, (address, uint256, bytes, Permission, bytes32));
-        if(permission.to != to) revert InvalidTo(to, permission.to);
-        if(permission.maxValue < value) revert ExceededValue(value, permission.maxValue);
-        // check gas on execute
-        if(permission.paymaster != address(0) && permission.maxFee > 0)revert InvalidPermission();
-        if(permission.selector != bytes4(callData)) revert InvalidSelector(bytes4(callData), permission.selector);
-        address paymaster = address(0);
-        assembly {
-            let initCodeSize := mload(add(userOp, 64))
-            let callDataSize := mload(add(add(userOp, 96), initCodeSize))
-            paymaster := mload(add(add(add(userOp, 256), initCodeSize), callDataSize))
-            let mask := shl(12, sub(exp(2, 160), 1))
-            paymaster := and(mask, paymaster)
+    function execute(
+        address dest,
+        uint256 value,
+        bytes calldata func,
+        Permission calldata permission,
+        bytes32 permissionHash
+    ) external {
+        _requireFromEntryPointOrOwner();
+        if (msg.sender != owner()) {
+            uint fee = tx.gasprice * gasleft();
+            if (fee > _remainingFeeForPermission[permissionHash])
+                revert ExceededFees(
+                    fee,
+                    _remainingFeeForPermission[permissionHash]
+                );
+            _remainingValueForPermission[permissionHash] =
+                _remainingValueForPermission[permissionHash] -
+                value;
+            _remainingFeeForPermission[permissionHash] =
+                _remainingFeeForPermission[permissionHash] -
+                fee;
+            if (permission.expiresAtUnix != 0) {
+                if (block.timestamp >= permission.expiresAtUnix)
+                    revert ExpiredPermission(
+                        block.timestamp,
+                        permission.expiresAtUnix
+                    );
+            } else if (permission.expiresAtBlock != 0) {
+                if (block.number >= permission.expiresAtBlock)
+                    revert ExpiredPermission(
+                        block.number,
+                        permission.expiresAtBlock
+                    );
+            }
         }
-        if(permission.maxFee == 0 && permission.paymaster != paymaster) revert InvalidPaymaster(permission.paymaster, paymaster);
-        // check timestamps on execute
+        (bool success, ) = dest.call{value: value}(func);
+        (success);
     }
 
-    // function _updateValue(uint256 value)
+    /* INTERNAL */
 
-    function _requireFromEntryPoint() internal view override {
+    function _validatePermission(
+        UserOperation calldata userOp,
+        Permission memory permission,
+        bytes32 permissionHash
+    ) public view {
+        (address to, uint256 value, bytes memory callData, , ) = abi.decode(
+            bytes(userOp.callData[4:]),
+            (address, uint256, bytes, Permission, bytes32)
+        );
+        if (permission.to != to) revert InvalidTo(to, permission.to);
+        // if (_remainingFeeForPermission[permissionHash] < value)
+        //     revert ExceededValue(value, permission.maxValue);
+        if (permission.selector != bytes4(callData))
+            revert InvalidSelector(bytes4(callData), permission.selector);
+        if (permission.expiresAtUnix != 0 && permission.expiresAtBlock != 0)
+            revert InvalidPermission();
+        address paymaster = address(0);
+        assembly {
+            let paymasterOffset := calldataload(add(userOp, 288))
+            paymaster := calldataload(add(paymasterOffset, add(userOp, 32)))
+        }
+        if (permission.maxFee == 0 && permission.paymaster != paymaster)
+            revert InvalidPaymaster(permission.paymaster, paymaster);
+    }
+
+    function _validateMerklePermission(
+        Permission memory permission,
+        bytes32[] memory proof
+    ) internal view returns (bytes32 permHash) {
+        permHash = keccak256(
+            abi.encode(
+                permission.operator,
+                permission.to,
+                permission.selector,
+                permission.maxValue,
+                permission.maxFee,
+                permission.paymaster,
+                permission.expiresAtUnix,
+                permission.expiresAtBlock
+            )
+        );
+        bool isValidProof = MerkleProof.verify(
+            proof,
+            operatorPermissions[permission.operator],
+            permHash
+        );
+        if (!isValidProof) revert InvalidProof();
+    }
+
+    function _requireFromEntryPointOrOwner() internal view {
         require(
-            msg.sender == address(entryPoint()),
-            "account: not from EntryPoint"
+            msg.sender == address(entryPoint()) || msg.sender == owner(),
+            "account: not from EntryPoint or owner"
         );
     }
 
     function _validateSignature(
         UserOperation calldata userOp,
         bytes32 userOpHash
-        // address operator
-    ) internal override returns (uint256 validationData) {
+    ) internal view override returns (uint256 validationData) {
         bytes32 hash = userOpHash.toEthSignedMessageHash();
-        //  && operator != hash.recover(userOp.signature)
         if (owner() != hash.recover(userOp.signature))
             return SIG_VALIDATION_FAILED;
         return 0;
     }
 
-    function _validateAndUpdateNonce(UserOperation calldata userOp)
-        internal
-        override
-    {
+    function _validateAndUpdateNonce(
+        UserOperation calldata userOp
+    ) internal override {
         require(++_nonce == userOp.nonce, "account: invalid nonce");
     }
 
