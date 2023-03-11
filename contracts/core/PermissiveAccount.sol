@@ -9,11 +9,12 @@ import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "hardhat/console.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     using ECDSA for bytes32;
-    mapping(bytes32 => uint256) private _remainingFeeForPermission;
-    mapping(bytes32 => uint256) private _remainingValueForPermission;
+    mapping(address => uint256) public _remainingFeeForOperator;
+    mapping(address => uint256) public _remainingValueForOperator;
     mapping(address => bytes32) public operatorPermissions;
     IEntryPoint private immutable _entryPoint;
     uint96 private _nonce;
@@ -40,11 +41,12 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         uint256 maxValue,
         uint256 maxFee
     ) external {
+        // make it gasless
         _requireFromEntryPointOrOwner();
         bytes32 oldValue = operatorPermissions[operator];
         operatorPermissions[operator] = merkleRootPermissions;
-        _remainingFeeForPermission[merkleRootPermissions] = maxFee;
-        _remainingValueForPermission[merkleRootPermissions] = maxValue;
+        _remainingFeeForOperator[operator] = maxFee;
+        _remainingValueForOperator[operator] = maxValue;
         emit OperatorMutated(operator, oldValue, merkleRootPermissions);
     }
 
@@ -62,19 +64,17 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
             _validateAndUpdateNonce(userOp);
         }
         bytes32 hash = userOpHash.toEthSignedMessageHash();
-        if (owner() != hash.recover(userOp.signature)) {
-            (, , , Permission memory permission, bytes32[] memory proof) = abi
-                .decode(
-                    userOp.callData[4:],
-                    (address, uint256, bytes, Permission, bytes32[])
-                );
-
-            if (permission.operator != hash.recover(userOp.signature))
-                validationData = SIG_VALIDATION_FAILED;
-
-            bytes32 permHash = _validateMerklePermission(permission, proof);
-            _validatePermission(userOp, permission, permHash);
-        }
+        // if (owner() != hash.recover(userOp.signature)) {
+        (, , , Permission memory permission, bytes32[] memory proof) = abi
+            .decode(
+                userOp.callData[4:],
+                (address, uint256, bytes, Permission, bytes32[])
+            );
+        if (permission.operator != hash.recover(userOp.signature))
+            validationData = SIG_VALIDATION_FAILED;
+        _validateMerklePermission(permission, proof);
+        _validatePermission(userOp, permission);
+        // }
         _payPrefund(missingAccountFunds);
     }
 
@@ -83,21 +83,21 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         uint256 value,
         bytes calldata func,
         Permission calldata permission,
-        bytes32 permissionHash
+        bytes32[] calldata proof
     ) external {
         _requireFromEntryPointOrOwner();
         if (msg.sender != owner()) {
             uint fee = tx.gasprice * gasleft();
-            if (fee > _remainingFeeForPermission[permissionHash])
+            if (fee > _remainingFeeForOperator[permission.operator])
                 revert ExceededFees(
                     fee,
-                    _remainingFeeForPermission[permissionHash]
+                    _remainingFeeForOperator[permission.operator]
                 );
-            _remainingValueForPermission[permissionHash] =
-                _remainingValueForPermission[permissionHash] -
+            _remainingValueForOperator[permission.operator] =
+                _remainingValueForOperator[permission.operator] -
                 value;
-            _remainingFeeForPermission[permissionHash] =
-                _remainingFeeForPermission[permissionHash] -
+            _remainingFeeForOperator[permission.operator] =
+                _remainingFeeForOperator[permission.operator] -
                 fee;
             if (permission.expiresAtUnix != 0) {
                 if (block.timestamp >= permission.expiresAtUnix)
@@ -121,16 +121,15 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
 
     function _validatePermission(
         UserOperation calldata userOp,
-        Permission memory permission,
-        bytes32 permissionHash
-    ) public view {
+        Permission memory permission
+    ) internal view {
         (address to, uint256 value, bytes memory callData, , ) = abi.decode(
-            bytes(userOp.callData[4:]),
-            (address, uint256, bytes, Permission, bytes32)
+            userOp.callData[4:],
+            (address, uint256, bytes, Permission, bytes32[])
         );
         if (permission.to != to) revert InvalidTo(to, permission.to);
-        // if (_remainingFeeForPermission[permissionHash] < value)
-        //     revert ExceededValue(value, permission.maxValue);
+        if (_remainingValueForOperator[permission.operator] < value)
+            revert ExceededValue(value, permission.maxValue);
         if (permission.selector != bytes4(callData))
             revert InvalidSelector(bytes4(callData), permission.selector);
         if (permission.expiresAtUnix != 0 && permission.expiresAtBlock != 0)
@@ -147,8 +146,8 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     function _validateMerklePermission(
         Permission memory permission,
         bytes32[] memory proof
-    ) internal view returns (bytes32 permHash) {
-        permHash = keccak256(
+    ) public view {
+        bytes32 permHash = keccak256(
             abi.encode(
                 permission.operator,
                 permission.to,
@@ -200,4 +199,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
             (success);
         }
     }
+
+    // solhint-disable-next-line no-empty-blocks
+    receive() external payable {}
 }
