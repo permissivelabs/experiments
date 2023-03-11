@@ -86,32 +86,32 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
         bytes32[] calldata
     ) external {
         _requireFromEntryPointOrOwner();
-        // if (msg.sender != owner()) {
-        //     uint fee = tx.gasprice * gasleft();
-        //     if (fee > _remainingFeeForOperator[permission.operator]) {
-        //         revert ExceededFees(
-        //             fee,
-        //             _remainingFeeForOperator[permission.operator]
-        //         );
-        //     }
-        //     console.log("before update state");
-        //     _remainingValueForOperator[permission.operator] -= value;
-        //     _remainingFeeForOperator[permission.operator] -= fee;
-        //     console.log("after update state");
-        //     if (permission.expiresAtUnix != 0) {
-        //         if (block.timestamp >= permission.expiresAtUnix)
-        //             revert ExpiredPermission(
-        //                 block.timestamp,
-        //                 permission.expiresAtUnix
-        //             );
-        //     } else if (permission.expiresAtBlock != 0) {
-        //         if (block.number >= permission.expiresAtBlock)
-        //             revert ExpiredPermission(
-        //                 block.number,
-        //                 permission.expiresAtBlock
-        //             );
-        //     }
-        // }
+        if (msg.sender != owner()) {
+            uint fee = tx.gasprice * gasleft();
+            if (fee > _remainingFeeForOperator[permission.operator]) {
+                revert ExceededFees(
+                    fee,
+                    _remainingFeeForOperator[permission.operator]
+                );
+            }
+            console.log("before update state");
+            _remainingValueForOperator[permission.operator] -= value;
+            _remainingFeeForOperator[permission.operator] -= fee;
+            console.log("after update state");
+            if (permission.expiresAtUnix != 0) {
+                if (block.timestamp >= permission.expiresAtUnix)
+                    revert ExpiredPermission(
+                        block.timestamp,
+                        permission.expiresAtUnix
+                    );
+            } else if (permission.expiresAtBlock != 0) {
+                if (block.number >= permission.expiresAtBlock)
+                    revert ExpiredPermission(
+                        block.number,
+                        permission.expiresAtBlock
+                    );
+            }
+        }
         console.log(dest, value);
         console.logBytes(func);
         (bool success, bytes memory result) = dest.call{value: value}(func);

@@ -156,6 +156,35 @@ describe('validateUserOp', () => {
 			'Operator:',
 			ethers.utils.formatEther(await usdc.balanceOf(operator.address))
 		);
+		await account.execute(
+			usdc.address,
+			0,
+			usdc.interface.encodeFunctionData('transfer', [
+				operator.address,
+				ethers.utils.parseEther('10'),
+			]),
+			{
+				operator: operator.address,
+				to: usdc.address,
+				selector: Token.interface.getSighash('transfer'),
+				paymaster: '0x0000000000000000000000000000000000000000',
+				expiresAtUnix: 1709933133,
+				expiresAtBlock: 0,
+			},
+			[]
+		);
+		console.log(
+			'Owner:',
+			ethers.utils.formatEther(await usdc.balanceOf(owner.address))
+		);
+		console.log(
+			'Account:',
+			ethers.utils.formatEther(await usdc.balanceOf(owner.address))
+		);
+		console.log(
+			'Operator:',
+			ethers.utils.formatEther(await usdc.balanceOf(operator.address))
+		);
 	});
 
 	// it('should validate', async () => {
