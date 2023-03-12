@@ -22,6 +22,8 @@ interface IPermissiveAccount is IAccount {
         bytes32 newPermissions
     );
 
+    function initialize(address owner) external;
+
     function setOperatorPermissions(
         address operator,
         bytes32 merkleRootPermissions,
