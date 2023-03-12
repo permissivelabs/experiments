@@ -138,52 +138,14 @@ describe('validateUserOp', () => {
 			ethers.utils.arrayify(opHash)
 		);
 		await entrypoint.handleOps([operation], account.address);
-		console.log(
-			usdc.interface.encodeFunctionData('transfer', [
-				operator.address,
-				ethers.utils.parseEther('10'),
-			])
+		expect(await usdc.balanceOf(owner.address)).to.be.eq(
+			ethers.utils.parseUnits('50', 'ether')
 		);
-		console.log(
-			'Owner:',
-			ethers.utils.formatEther(await usdc.balanceOf(owner.address))
+		expect(await usdc.balanceOf(account.address)).to.be.eq(
+			ethers.utils.parseUnits('40', 'ether')
 		);
-		console.log(
-			'Account:',
-			ethers.utils.formatEther(await usdc.balanceOf(owner.address))
-		);
-		console.log(
-			'Operator:',
-			ethers.utils.formatEther(await usdc.balanceOf(operator.address))
-		);
-		await account.execute(
-			usdc.address,
-			0,
-			usdc.interface.encodeFunctionData('transfer', [
-				operator.address,
-				ethers.utils.parseEther('10'),
-			]),
-			{
-				operator: operator.address,
-				to: usdc.address,
-				selector: Token.interface.getSighash('transfer'),
-				paymaster: '0x0000000000000000000000000000000000000000',
-				expiresAtUnix: 1709933133,
-				expiresAtBlock: 0,
-			},
-			[]
-		);
-		console.log(
-			'Owner:',
-			ethers.utils.formatEther(await usdc.balanceOf(owner.address))
-		);
-		console.log(
-			'Account:',
-			ethers.utils.formatEther(await usdc.balanceOf(owner.address))
-		);
-		console.log(
-			'Operator:',
-			ethers.utils.formatEther(await usdc.balanceOf(operator.address))
+		expect(await usdc.balanceOf(operator.address)).to.be.eq(
+			ethers.utils.parseUnits('10', 'ether')
 		);
 	});
 

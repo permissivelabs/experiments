@@ -9,7 +9,6 @@ import "../interfaces/Permission.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import "hardhat/console.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     using ECDSA for bytes32;
@@ -80,7 +79,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     function execute(
         address dest,
         uint256 value,
-        bytes calldata func,
+        bytes memory func,
         Permission calldata permission,
         // stores the proof, only used in validateUserOp
         bytes32[] calldata
@@ -94,10 +93,8 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
                     _remainingFeeForOperator[permission.operator]
                 );
             }
-            console.log("before update state");
             _remainingValueForOperator[permission.operator] -= value;
             _remainingFeeForOperator[permission.operator] -= fee;
-            console.log("after update state");
             if (permission.expiresAtUnix != 0) {
                 if (block.timestamp >= permission.expiresAtUnix)
                     revert ExpiredPermission(
@@ -112,10 +109,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
                     );
             }
         }
-        console.log(dest, value);
-        console.logBytes(func);
         (bool success, bytes memory result) = dest.call{value: value}(func);
-        console.log(success);
         if (!success) {
             assembly {
                 revert(add(result, 32), mload(result))

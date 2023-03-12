@@ -80,7 +80,7 @@ export const generateCorrectOperation = (
 				.tree.getProof(hashPermission(permissionsSample(operator)[0]))
 				.map((e) => `0x${e.data.toString('hex')}`),
 		]),
-		callGasLimit: '10000',
+		callGasLimit: '10000000',
 		verificationGasLimit: '10000000',
 		preVerificationGas: '10000',
 		maxFeePerGas: '10000',
