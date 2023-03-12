@@ -17,6 +17,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     mapping(address => bytes32) public operatorPermissions;
     IEntryPoint private immutable _entryPoint;
     uint96 private _nonce;
+    bool private _initialized;
 
     constructor(address __entryPoint) {
         _entryPoint = IEntryPoint(__entryPoint);
@@ -33,6 +34,12 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     }
 
     /* EXTERNAL FUNCTIONS */
+
+    function initialize(address owner) external {
+        require(!_initialized, "Contract already initialized");
+        _initialized = true;
+        _transferOwnership(owner);
+    }
 
     function setOperatorPermissions(
         address operator,
@@ -72,6 +79,18 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
                 validationData = SIG_VALIDATION_FAILED;
             _validateMerklePermission(permission, proof);
             _validatePermission(userOp, permission);
+            if (
+                missingAccountFunds >
+                _remainingFeeForOperator[permission.operator]
+            ) {
+                revert ExceededFees(
+                    missingAccountFunds,
+                    _remainingFeeForOperator[permission.operator]
+                );
+            }
+            _remainingFeeForOperator[
+                permission.operator
+            ] -= missingAccountFunds;
         }
         _payPrefund(missingAccountFunds);
     }
@@ -86,15 +105,6 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     ) external {
         _requireFromEntryPointOrOwner();
         if (msg.sender != owner()) {
-            uint fee = tx.gasprice * gasleft();
-            if (fee > _remainingFeeForOperator[permission.operator]) {
-                revert ExceededFees(
-                    fee,
-                    _remainingFeeForOperator[permission.operator]
-                );
-            }
-            _remainingValueForOperator[permission.operator] -= value;
-            _remainingFeeForOperator[permission.operator] -= fee;
             if (permission.expiresAtUnix != 0) {
                 if (block.timestamp >= permission.expiresAtUnix)
                     revert ExpiredPermission(
@@ -122,7 +132,7 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     function _validatePermission(
         UserOperation calldata userOp,
         Permission memory permission
-    ) internal view {
+    ) internal {
         (address to, uint256 value, bytes memory callData, , ) = abi.decode(
             userOp.callData[4:],
             (address, uint256, bytes, Permission, bytes32[])
@@ -133,17 +143,20 @@ contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
                 value,
                 _remainingValueForOperator[permission.operator]
             );
+        _remainingValueForOperator[permission.operator] -= value;
         if (permission.selector != bytes4(callData))
             revert InvalidSelector(bytes4(callData), permission.selector);
         if (permission.expiresAtUnix != 0 && permission.expiresAtBlock != 0)
             revert InvalidPermission();
-        address paymaster = address(0);
-        assembly {
-            let paymasterOffset := calldataload(add(userOp, 288))
-            paymaster := calldataload(add(paymasterOffset, add(userOp, 20)))
+        if (permission.paymaster != address(0)) {
+            address paymaster = address(0);
+            assembly {
+                let paymasterOffset := calldataload(add(userOp, 288))
+                paymaster := calldataload(add(paymasterOffset, add(userOp, 20)))
+            }
+            if (paymaster != permission.paymaster)
+                revert InvalidPaymaster(paymaster, permission.paymaster);
         }
-        if (paymaster != permission.paymaster)
-            revert InvalidPaymaster(paymaster, permission.paymaster);
     }
 
     function _validateMerklePermission(
