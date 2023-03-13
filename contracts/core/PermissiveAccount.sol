@@ -12,8 +12,8 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract PermissiveAccount is BaseAccount, IPermissiveAccount, Ownable {
     using ECDSA for bytes32;
-    mapping(address => uint256) public _remainingFeeForOperator;
-    mapping(address => uint256) public _remainingValueForOperator;
+    mapping(address => uint256) private _remainingFeeForOperator;
+    mapping(address => uint256) private _remainingValueForOperator;
     mapping(address => bytes32) public operatorPermissions;
     IEntryPoint private immutable _entryPoint;
     uint96 private _nonce;
